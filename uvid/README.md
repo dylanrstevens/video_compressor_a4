@@ -1,15 +1,17 @@
 
-#CSC485B - Assignment 4 - video compressor and decompressor                          
-#Dylan Stevens                                                                       
-#V00957595                                                                           
+# CSC485B - Assignment 4 - video compressor and decompressor                          
+# Dylan Stevens                                                                       
+# V00957595                                                                           
 
 
-**Overview**
+## Overview
 
 Video compressor and decompressor that supports I frames, P frames, motion compensation, run length encoding, delta encoding, and dynamic huffman coding. Various data structures and algorithms are used, including binary trees for huffman encoding, matrix multiplication in the discrete cosine transform, and many others.
 
 
-**Features Implemented**
+## Features Implemented
+
+**Basic Requirements**
 
 1. Temporally compressed frames (P-frames)
 - In the compressor:
@@ -40,7 +42,19 @@ Video compressor and decompressor that supports I frames, P frames, motion compe
     - Many other examples
 
 
-**Architecture**
+**Advanced requirements**
+
+4. Dynamic Huffman Coding
+- In the compressor:
+    - Bit lengths are calculated based on frequencies (lines 140 - 222 for bit length function) and (lines 460 - 594 for prefix code output function)
+
+- In the decompressor:
+    - Once bitlengths are recovered, symbols are retrieved using the appropriate prefix code (lines 142 - 189)
+
+5. Implementation achieves real time decompression for video samples of resolution 640 x 480 at 30 frames per second
+
+
+## Architecture
 
 The pipeline for the compressor is as follows:
 
@@ -66,7 +80,7 @@ For each P frame:
 - The motion vectors are found using the minimum sum of absolute differences, in order to find the smallest delta values which will provide best compression in the quanitzation phase
 
 
-**Bitstream**
+## Bitstream
 
 - video height: 32 bytes
 - video width: 32 bytes
@@ -94,6 +108,6 @@ The vector table is encoded in the bitstream as follows:
 - Motion vectors for every block in Cr-plane: bytes equal to number of blocks in a frame / 2 * 10 bytes per motion vector (5 for dx and 5 for dy)
 
 
-**Bibliography**
+## Bibliography
 
 Lecture videos and slides provided by Bill Bird
