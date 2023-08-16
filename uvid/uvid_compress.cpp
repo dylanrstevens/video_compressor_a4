@@ -1,20 +1,8 @@
-/* uvid_compress.cpp
-   CSC 485B/578B - Data Compression - Summer 2023
-
-   Starter code for Assignment 4
-
-   Reads video data from stdin in uncompresed YCbCr (YUV) format 
-   (With 4:2:0 subsampling). To produce this format from 
-   arbitrary video data in a popular format, use the ffmpeg
-   tool and a command like 
-
-     ffmpeg -i videofile.mp4 -f rawvideo -pixel_format yuv420p - 2>/dev/null | ./this_program <width> height>
-
-   Note that since the width/height of each frame is not encoded into the raw
-   video stream, those values must be provided to the program as arguments.
-
-   B. Bird - 2023-07-08
-*/
+//!-------------------------------------------------------------------------------------+
+//! CSC485B - Assignment 4 - video compressor                                           +
+//! Dylan Stevens                                                                       +
+//! V00957595                                                                           +
+//!-------------------------------------------------------------------------------------+
 
 #include <iostream>
 #include <fstream>
@@ -32,6 +20,8 @@
 #include <functional>
 #include <map>
 #include <bitset>
+#include <vector>
+#include <algorithm>
 
 
 #define BLK_SIZE 16
@@ -57,6 +47,12 @@ struct HuffmanCode {
     unsigned int code;
 };
 
+
+/**
+ * @brief Prints the lengths of Huffman codes for each symbol.
+ * 
+ * @param codeLengths A map of symbol IDs to their corresponding code lengths.
+ */
 void printCodeLengths(const std::map<int, unsigned int>& codeLengths) {
     std::clog << "Symbol\tCode Length" << std::endl;
     for (const auto& entry : codeLengths) {
@@ -66,10 +62,13 @@ void printCodeLengths(const std::map<int, unsigned int>& codeLengths) {
     }
 }
 
-#include <map>
-#include <vector>
-#include <algorithm>
 
+/**
+ * @brief Creates a Huffman table from given bit lengths of symbols.
+ * 
+ * @param bitLengths A map of symbol IDs to their corresponding bit lengths.
+ * @return The created Huffman table as a map of symbol IDs to code lengths.
+ */
 std::map<int, unsigned int> createHuffmanTable(const std::map<int, unsigned int>& bitLengths) {
     std::map<int, unsigned int> huffmanTable;
 
@@ -103,7 +102,12 @@ std::map<int, unsigned int> createHuffmanTable(const std::map<int, unsigned int>
 }
 
 
-
+/**
+ * @brief Generates static Huffman code lengths for symbols up to maxSymbol.
+ * 
+ * @param maxSymbol The maximum symbol ID.
+ * @return A map of symbol IDs to generated code lengths.
+ */
 std::map<int, unsigned int> generateStaticCodeLengths(int maxSymbol) {
     std::map<int, unsigned int> staticCodeLengths;
 
@@ -126,7 +130,13 @@ std::map<int, unsigned int> generateStaticCodeLengths(int maxSymbol) {
     return staticCodeLengths;
 }
 
-
+/**
+ * @brief Generates dynamic Huffman code lengths based on input symbols.
+ * 
+ * @param symbols Input symbols for dynamic code generation.
+ * @param maxSymbol The maximum symbol ID.
+ * @return A map of symbol IDs to generated code lengths.
+ */
 std::map<int, unsigned int> generateDynamicCodeLengths(const std::vector<int>& symbols, int maxSymbol) {
     const int numSymbols = maxSymbol+2;  // Number of symbols, including special symbols
 
@@ -214,11 +224,17 @@ std::map<int, unsigned int> generateDynamicCodeLengths(const std::vector<int>& s
 
 
 template<typename T>
-std::vector<std::vector<T> > create_2d_vector(unsigned int outer, unsigned int inner){
+std::vector<std::vector<T> > create_2d_vector(unsigned int outer, unsigned int inner) {
     std::vector<std::vector<T> > V {outer, std::vector<T>(inner,T() )};
     return V;
 }
 
+/**
+ * @brief Creates a decompressed color plane using the specified quantization ID.
+ * 
+ * @param color_plane The color plane to decompress.
+ * @param q_id The quantization ID.
+ */
 void createDecompressedColorPlane(std::vector<std::vector<unsigned char>>& color_plane, unsigned int q_id) {
     unsigned int height = color_plane.size();
     unsigned int width = color_plane[0].size();
@@ -431,6 +447,16 @@ int Q_low[16][16] = {
 }
 
 
+/**
+ * @brief Outputs prefix codes for given input using a Huffman table.
+ * 
+ * @param input The input data to be encoded.
+ * @param huffmanTable The Huffman table for encoding.
+ * @param bit_lengths_for_deltas Bit lengths for the delta encoded symbols.
+ * @param run_len_symbol Symbol for run length encoding.
+ * @param run_len_symbol_len Bit length of the run length symbol.
+ * @return A vector of prefix codes as bits.
+ */
 std::vector<unsigned int> outputPrefixCodes(const std::vector<int>& input, const std::map<int, unsigned int>& huffmanTable, std::map<int, unsigned int> bit_lengths_for_deltas, unsigned int run_len_symbol, unsigned int run_len_symbol_len) {
     std::vector<unsigned int> data;
     int runs_less_than_8 = 0;
@@ -568,6 +594,13 @@ std::vector<unsigned int> outputPrefixCodes(const std::vector<int>& input, const
 }
 
 
+/**
+ * @brief Decodes Huffman-encoded data using a specified Huffman table.
+ * 
+ * @param bitstream The Huffman-encoded data as a bitstream.
+ * @param huffmanTable The Huffman table for decoding.
+ * @return Decoded data as a vector of integers.
+ */
 std::vector<int> decodeData(const std::vector<unsigned int>& bitstream, const std::map<int, unsigned int>& huffmanTable) {
     std::vector<int> decodedData;
     unsigned int numBits = 0;
@@ -595,6 +628,12 @@ std::vector<int> decodeData(const std::vector<unsigned int>& bitstream, const st
     return decodedData;
 }
 
+
+/**
+ * @brief Prints the contents of a Huffman table.
+ * 
+ * @param huffmanTable The Huffman table to be printed.
+ */
 void printHuffmanTable(const std::map<int, unsigned int>& huffmanTable) {
     std::clog << "Symbol\tCode" << std::endl;
     for (const auto& entry : huffmanTable) {
@@ -612,6 +651,14 @@ void printHuffmanTable(const std::map<int, unsigned int>& huffmanTable) {
     }
 }
 
+
+/**
+ * @brief Applies Delta DCT transformation to a frame.
+ * 
+ * @param frame_deltas The frame to be transformed.
+ * @param stream The output bitstream to write the transformed data.
+ * @param q_id The quantization ID.
+ */
 void Delta_DCT(std::vector<std::vector<int>>& frame_deltas, OutputBitStream stream, unsigned int q_id) {
     unsigned int height = frame_deltas.size();
     unsigned int width = frame_deltas[0].size();
@@ -736,16 +783,6 @@ int Q_low[16][16] = {
                     block[i][j] = frame_deltas[y][x];
                 }
             }
-            /*
-            std::clog << "P frame deltas for block ("<<block_y+1<<", "<<block_x+1<<")\n";
-            for (int i = 0; i < m; i++) {
-                for (int j = 0; j < n; j++) {
-                    std::clog << block[i][j] << "    ";
-                }
-                std::clog << std::endl;
-            }
-            std::clog << std::endl;  
-            */
 
             // Compute the matrix multiplication of (C)(block)
             float temp[C_size][C_size];
@@ -783,46 +820,7 @@ int Q_low[16][16] = {
                         quantized_dct[i][j] = round(dct_block[i][j] / Q_hi[i][j]);
                     }
                 }
-            }
-
-            /*
-
-            Every value in the quanitzed matrix (which goes into the stream) starts
-            with a prefix value.
-            1 = number that isn't 0
-            0 = the number 0
-
-            For every value, the decompressor first reads the prefix, and if it reads 1, then it also reads the
-            byte after it and pushes that byte to the quantized matrix, and if it reads 0, then it
-            just pushed 0 to the quantized matrix and moves on.
-            */
-            // Push the values to the stream
-
-
-            /*
-            for (int i = 0; i < m; i++) {
-                for (int j = 0; j < n; j++) {
-                    std::clog << quantized_dct[i][j] << "    ";
-                }
-                std::clog << std::endl;
-            }
-            std::clog << std::endl;  
-            */   
-
-            /*
-            if (block_y == num_blocks_y - 1) {
-                std::clog << "Block ("<<block_y+1<<", "<<block_x+1<<") values for frame: \n";
-                for (int i = 0; i < m; i++) {
-                    for (int j = 0; j < n; j++) {
-                        std::clog << std::round(quantized_dct[i][j]) << "    ";
-                    }
-                    std::clog << std::endl;
-                }
-                std::clog << std::endl;
-            } 
-            */
-              
-            
+            }            
 
             int last_val = 0;
             int original_val = 0;
@@ -830,25 +828,15 @@ int Q_low[16][16] = {
                 for (int j = 0; j < n; j++) {
                     int signed_val = (quantized_dct[i][j]);
                     if ((i == 0) && (j == 0 || j == 1)) {
-                        // push the first 2 values (the dct constants) as a u16
-                        //std::clog << signed_val << "->";
                         original_val = signed_val;
                         u16 unsigned_casted_val = static_cast<u16>(signed_val);
-                        //std::clog << unsigned_casted_val << "    ";
                         constants.push_back(unsigned_casted_val);
-                        //deltas.push_back(signed_val);
                         last_val = signed_val;
-                        //std::clog << signed_val << "    ";
                     } else {
-                        //std::clog << signed_val << "->";
                         original_val = signed_val;
                         signed_val = signed_val-last_val;
-                        //u16 delta_unsigned_casted_val = static_cast<u16>(signed_val);
-                        //stream.push_u16(delta_unsigned_casted_val);
                         deltas.push_back(signed_val);
                         last_val = original_val;
-                        //std::clog << signed_val << "    ";
-                        // clamp every other value (if necessary) and push as a u8
                     }
                 }
             }
@@ -856,41 +844,19 @@ int Q_low[16][16] = {
         
     }
     
-    /*
-    std::clog << "P frame deltas: \n";
-    for (auto i : deltas) {
-        std::clog << i << " ";
-    }
-    std::clog << std::endl;
-    */
-    
-
-
-    //std::clog << "bit lengths for deltas: \n";
     std::map<int, unsigned int> bit_lengths_for_deltas = generateDynamicCodeLengths(deltas, 512);
 
     std::map<int, unsigned int> huffmanTable = createHuffmanTable(bit_lengths_for_deltas);
 
-    //printHuffmanTable(huffmanTable);
     unsigned int run_len_symbol_len = bit_lengths_for_deltas[513];
     unsigned int run_len_symbol = huffmanTable[513];
     bit_lengths_for_deltas.erase(513);
     huffmanTable.erase(513);
 
-    //printHuffmanTable(huffmanTable);
-    //std::clog<<"run len sym: "<<run_len_symbol<<", run len sym len: "<<run_len_symbol_len<<"\n";
-
-
-    //std::clog<<run_len_symbol<<"\n";
-
-    //printCodeLengths(bit_lengths_for_deltas);
 
     //push the code lengths
     int lowest = bit_lengths_for_deltas.begin()->first;
     int highest = bit_lengths_for_deltas.rbegin()->first;
-
-    //std::clog << lowest << "\n";
-    //std::clog << highest << "\n";
 
     stream.push_u16(static_cast<u16>(lowest));
     stream.push_u16(static_cast<u16>(highest));
@@ -918,39 +884,30 @@ int Q_low[16][16] = {
         unsigned int v = (run_len_symbol_len >> j) & 1;
         stream.push_bit(v);
     }
-    
-    //std::clog << "Huffman table: \n";
-    //printHuffmanTable(huffmanTable);
-    
-    //std::clog << "Bits: \n";
+
     std::vector<unsigned int> bits = outputPrefixCodes(deltas, huffmanTable, bit_lengths_for_deltas, run_len_symbol, run_len_symbol_len);
     
     u32 num_of_bits = bits.size();
-    //std::clog<<"P frame bits: "<<num_of_bits << "\n";
     stream.push_u32(num_of_bits);
 
     for (auto bit : bits) {
         stream.push_bit(bit);
-        //std::clog << bit << " ";
     }
 
     for (auto constant : constants) {
         stream.push_u16(constant);
     }
     
-
-
-    /*
-        std::clog << "decompressed: \n";
-        for (auto d : decompressed_data) {
-            std::clog << d << "    ";
-        }
-        std::clog << std::endl;
-        */
     deltas.clear();
 }
 
-
+/**
+ * @brief Applies Discrete Cosine Transformation (DCT) to a color plane.
+ * 
+ * @param color_plane The color plane to be transformed.
+ * @param stream The output bitstream to write the transformed data.
+ * @param q_id The quantization ID.
+ */
 void DCT(std::vector<std::vector<unsigned char>>& color_plane, OutputBitStream stream, unsigned int q_id) {
     unsigned int height = color_plane.size();
     unsigned int width = color_plane[0].size();
@@ -1112,32 +1069,7 @@ int Q_low[16][16] = {
                         quantized_dct[i][j] = round(dct_block[i][j] / Q_hi[i][j]);
                     }
                 }
-            }
-
-            /*
-
-            Every value in the quanitzed matrix (which goes into the stream) starts
-            with a prefix value.
-            1 = number that isn't 0
-            0 = the number 0
-
-            For every value, the decompressor first reads the prefix, and if it reads 1, then it also reads the
-            byte after it and pushes that byte to the quantized matrix, and if it reads 0, then it
-            just pushed 0 to the quantized matrix and moves on.
-            */
-            // Push the values to the stream
-
-
-            /*
-            for (int i = 0; i < m; i++) {
-                for (int j = 0; j < n; j++) {
-                    std::clog << quantized_dct[i][j] << "    ";
-                }
-                std::clog << std::endl;
-            }
-            std::clog << std::endl;  
-            */
-               
+            }  
 
             int last_val = 0;
             int original_val = 0;
@@ -1145,70 +1077,28 @@ int Q_low[16][16] = {
                 for (int j = 0; j < n; j++) {
                     int signed_val = (quantized_dct[i][j]);
                     if ((i == 0) && (j == 0 || j == 1)) {
-                        // push the first 2 values (the dct constants) as a u16
-                        //std::clog << signed_val << "->";
                         original_val = signed_val;
                         u16 unsigned_casted_val = static_cast<u16>(signed_val);
-                        //std::clog << unsigned_casted_val << "    ";
                         constants.push_back(unsigned_casted_val);
-                        //deltas.push_back(signed_val);
                         last_val = signed_val;
-                        //std::clog << signed_val << "    ";
                     } else {
-                        //std::clog << signed_val << "->";
                         original_val = signed_val;
                         signed_val = signed_val-last_val;
-                        //u16 delta_unsigned_casted_val = static_cast<u16>(signed_val);
-                        //stream.push_u16(delta_unsigned_casted_val);
                         deltas.push_back(signed_val);
                         last_val = original_val;
-                        //std::clog << signed_val << "    ";
-                        // clamp every other value (if necessary) and push as a u8
                     }
                 }
             }
         }
         
     }
-    
-    /*
-    std::clog << "I frame deltas: \n";
-    for (auto i : deltas) {
-        std::clog << i << " ";
-    }
-    std::clog << std::endl;
-    */
-
-    
-
-
-    //std::clog << "bit lengths for deltas: \n";
-    //std::map<int, unsigned int> bit_lengths_for_deltas = generateStaticCodeLengths(512);
-    //std::map<int, unsigned int> bit_lengths_for_deltas = generateStaticCodeLengths(512);
-
-    //printCodeLengths(bit_lengths_for_deltas);
-    //std::clog << std::endl;
-
-    //
 
     std::map<int, unsigned int> bit_lengths_for_deltas = generateDynamicCodeLengths(deltas, 512);
 
     std::map<int, unsigned int> huffmanTable = createHuffmanTable(bit_lengths_for_deltas);
 
-    //printHuffmanTable(huffmanTable);
     unsigned int run_len_symbol_len = bit_lengths_for_deltas[513];
     unsigned int run_len_symbol = huffmanTable[513];
-    
-    
-
-    //printHuffmanTable(huffmanTable);
-    //std::clog<<"run len sym: "<<run_len_symbol<<", run len sym len: "<<run_len_symbol_len<<"\n";
-
-
-
-    //std::clog<<run_len_symbol<<"\n";
-
-    //printCodeLengths(bit_lengths_for_deltas);
 
     bit_lengths_for_deltas.erase(513);
     huffmanTable.erase(513);
@@ -1216,9 +1106,6 @@ int Q_low[16][16] = {
     //push the code lengths
     int lowest = bit_lengths_for_deltas.begin()->first;
     int highest = bit_lengths_for_deltas.rbegin()->first;
-
-    //std::clog << lowest << "\n";
-    //std::clog << highest << "\n";
 
     stream.push_u16(static_cast<u16>(lowest));
     stream.push_u16(static_cast<u16>(highest));
@@ -1247,37 +1134,28 @@ int Q_low[16][16] = {
         stream.push_bit(v);
     }
     
-    //std::clog << "Huffman table: \n";
-    //printHuffmanTable(huffmanTable);
-    
-    //std::clog << "Bits: \n";
     std::vector<unsigned int> bits = outputPrefixCodes(deltas, huffmanTable, bit_lengths_for_deltas, run_len_symbol, run_len_symbol_len);
     
     u32 num_of_bits = bits.size();
-    //std::clog<<"I frame bits: "<<num_of_bits << "\n";
     stream.push_u32(num_of_bits);
 
     for (auto bit : bits) {
         stream.push_bit(bit);
-        //std::clog << bit << " ";
     }
 
     for (auto constant : constants) {
         stream.push_u16(constant);
     }
-    
 
-
-    /*
-        std::clog << "decompressed: \n";
-        for (auto d : decompressed_data) {
-            std::clog << d << "    ";
-        }
-        std::clog << std::endl;
-        */
     deltas.clear();
 }
 
+
+/**
+ * @brief Prints the contents of a 2D array.
+ * 
+ * @param array The 2D array to be printed.
+ */
 void print2DArray(const std::vector<std::vector<unsigned char>>& array) {
     for (int i = 0; i < BLK_SIZE; i++) {
         for (int j = 0; j < BLK_SIZE; j++) {
@@ -1288,6 +1166,13 @@ void print2DArray(const std::vector<std::vector<unsigned char>>& array) {
     std::clog << std::endl;
 }
 
+
+
+/**
+ * @brief Prints the contents of a 2D delta array.
+ * 
+ * @param array The 2D delta array to be printed.
+ */
 void print2DdeltaArray(const std::vector<std::vector<int>>& array) {
     for (int i = 0; i < BLK_SIZE; i++) {
         for (int j = 0; j < BLK_SIZE; j++) {
@@ -1321,7 +1206,17 @@ struct MotionVector {
     int dy; // Vertical motion vector
 };
 
-// Function to perform motion estimation and store motion vectors
+
+/**
+ * @brief Calculates motion vectors for a video frame.
+ * 
+ * @param currentFrame The current video frame.
+ * @param referenceFrame The reference frame for comparison.
+ * @param blockWidth The width of motion estimation blocks.
+ * @param blockHeight The height of motion estimation blocks.
+ * @param searchRange The search range for motion estimation.
+ * @return A vector of calculated motion vectors.
+ */
 std::vector<MotionVector> calculateMotionVectors(
     const std::vector<std::vector<unsigned char>>& currentFrame,
     const std::vector<std::vector<unsigned char>>& referenceFrame,
@@ -1369,6 +1264,15 @@ std::vector<MotionVector> calculateMotionVectors(
     return motionVectors;
 }
 
+
+/**
+ * @brief Prints motion vectors for a video frame.
+ * 
+ * @param motionVectors The motion vectors to be printed.
+ * @param blockWidth The width of motion estimation blocks.
+ * @param blockHeight The height of motion estimation blocks.
+ * @param frameWidth The width of the video frame.
+ */
 void printMotionVectors(const std::vector<MotionVector>& motionVectors, int blockWidth, int blockHeight, int frameWidth) {
     for (unsigned int blockIndex = 0; blockIndex < motionVectors.size(); ++blockIndex) {
         int blockX = (blockIndex % (frameWidth / blockWidth)) * blockWidth;
@@ -1379,8 +1283,9 @@ void printMotionVectors(const std::vector<MotionVector>& motionVectors, int bloc
 }
 
 
-
-
+/**
+* @brief Main driver function
+*/
 int main(int argc, char** argv){
 
     if (argc < 4){
@@ -1419,11 +1324,8 @@ int main(int argc, char** argv){
     int frame_count = 0;
 
     while (reader.read_next_frame()){
-        //std::clog<<"frame: "<<frame_count<<"\n";
         output_stream.push_byte(1); //Use a one byte flag to indicate whether there is a frame here
         YUVFrame420& frame = reader.frame();
-
-        //std::clog << last_frame.type;
 
         //extract Y values
         auto Y = create_2d_vector<unsigned char>(height, width);
@@ -1434,9 +1336,7 @@ int main(int argc, char** argv){
 
         //extract Cr values
         auto Cr = create_2d_vector<unsigned char>(height/2, width/2);
-        
-        
-
+                
         //I Frame
         if (frame_type == 4) {
             for (u32 y = 0; y < height; y++)
@@ -1451,20 +1351,16 @@ int main(int argc, char** argv){
                 for (u32 x = 0; x < width/2; x++)
                     Cr.at(y).at(x) = frame.Cr(x,y);
 
-
-            //std::clog << "I frames\n";
             DCT(Y, output_stream, q_id);
             DCT(Cb, output_stream, q_id);
             DCT(Cr, output_stream, q_id);
-            //std::clog << std::endl;
             
             last_frame.type = 0;
             last_frame.Y = Y;
             last_frame.Cb = Cb;
             last_frame.Cr = Cr;
 
-            frame_type = 0;
-            
+            frame_type = 0;   
         }
 
         //P Frame
@@ -1474,19 +1370,10 @@ int main(int argc, char** argv){
             auto last_y = last_frame.Y;
             auto last_cb = last_frame.Cb;
             auto last_cr = last_frame.Cr;
-
-
-            //std::clog << "last y before decompress\n";
-
-            //print2DArray(last_y);
             
             createDecompressedColorPlane(last_y, q_id);
             createDecompressedColorPlane(last_cb, q_id);
             createDecompressedColorPlane(last_cr, q_id);
-
-
-            // Now calculate the diference between the new frame, and the decompressed last frame
-            //std::clog << "P frame Y unconstructed\n";
 
             for (u32 y = 0; y < height; y++)
                 for (u32 x = 0; x < width; x++)
@@ -1504,17 +1391,10 @@ int main(int argc, char** argv){
             auto delta_Cb = create_2d_vector<int>(height/2, width/2);
             auto delta_Cr = create_2d_vector<int>(height/2, width/2);
 
-            //std::clog << "Y after delta\n";
-
             std::vector<MotionVector> motion_vectors_y = calculateMotionVectors(Y, last_y, BLK_SIZE, BLK_SIZE, BLK_SIZE);
             std::vector<MotionVector> motion_vectors_cb = calculateMotionVectors(Cb, last_y, BLK_SIZE, BLK_SIZE, BLK_SIZE);
             std::vector<MotionVector> motion_vectors_cr = calculateMotionVectors(Cr, last_y, BLK_SIZE, BLK_SIZE, BLK_SIZE);
 
-
-            //printMotionVectors(motion_vectors_y, 16, 16, width);
-            //printMotionVectors(motion_vectors_cb, 4, 4, width/2);
-            
-            //push y motion vectors
             int numbitspushed = 0;
             for (u32 i = 0; i < motion_vectors_y.size(); i++) {
                 int dx = motion_vectors_y[i].dx;
@@ -1615,10 +1495,6 @@ int main(int argc, char** argv){
                 }
             }
             
-            //std::clog << numbitspushed<<"\n";
-
-
-
             unsigned int blockIndex = 0;
             //frame level
             for (u32 block_y = 0; block_y < height; block_y += BLK_SIZE) {
@@ -1669,15 +1545,9 @@ int main(int argc, char** argv){
                 }
             }
 
-
-           
-
-            //std::clog << "P frames\n";
             Delta_DCT(delta_Y, output_stream, q_id);
             Delta_DCT(delta_Cb, output_stream, q_id);
             Delta_DCT(delta_Cr, output_stream, q_id);
-            //std::clog << std::endl;
-
 
             last_frame.type = 1;
             last_frame.Y = Y;
